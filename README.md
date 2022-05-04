@@ -1,2 +1,2 @@
 # Blackjack
-Welcome to the Casio de Monte-Carlo!
+Welcome to the Casino de Monte-Carlo!
