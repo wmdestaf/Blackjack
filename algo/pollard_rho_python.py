@@ -13,11 +13,8 @@ from sys import argv
 
 FAILURE = -1
 #standard off-cycle evaluation
-#x^2 + c mod n expands to (pow(x,2,n) + c mod n) mod n
-#can reasonably assume c mod n == n, but double mod == slowww
-#therefore, instead use as g(x), x^2 + cx + c^2 mod n.
 def g(x,c,n):
-    return pow(x+c,2,n) #not the strict x^2 + c % n, 
+    return (pow(x,2,n) + c) % n #not the strict x^2 + c % n, 
     
 #pollard-rho with master-controller paradigm.
 #on one fork's failure, change start, regenerate random offset
@@ -52,6 +49,7 @@ def pollard_rho_parallel_naive(n, threads, start=2):
                     for future in futures:
                         future.cancel()
                     return res
+                break
     
 #serial pollard-rho 
 # n: modulus
