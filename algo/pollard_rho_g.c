@@ -4,8 +4,16 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#include <sys/time.h>
+
 #include <gmp.h>
 #include <omp.h>
+
+#define GET_TIME(now) { \
+   struct timeval t; \
+   gettimeofday(&t, NULL); \
+   now = t.tv_sec + t.tv_usec/1000000.0; \
+}
 
 void usage() {
 	fprintf(stderr, "%s\n","usage: pollard_rho n");
@@ -28,7 +36,12 @@ void pollard_rho(const mpz_t n, mpz_t res, volatile bool *terminate) {
 
 	while(1) {
 		#pragma omp flush(terminate)
-		if(*terminate) return;
+		if(*terminate) {
+			//clean up
+			gmp_randclear(state);
+			mpz_clears(i,x,y,k,d,ymx,NULL);
+			return;
+		}
 		
 		mpz_add_ui(i, i, 1);
 		
@@ -44,6 +57,10 @@ void pollard_rho(const mpz_t n, mpz_t res, volatile bool *terminate) {
 		if(mpz_cmp_ui(d, 1) && mpz_cmp(d, n)) {
 			mpz_set(res, d);
 			mpz_abs(res, res);
+			
+			//clean up
+			gmp_randclear(state);
+			mpz_clears(i,x,y,k,d,ymx,NULL);
 			return;
 		}
 		else if(!mpz_cmp(i, k)) {
@@ -56,12 +73,16 @@ void pollard_rho(const mpz_t n, mpz_t res, volatile bool *terminate) {
 int main(int argc, char **argv) {
 	mpz_t n, res;
 	gmp_randstate_t state;
+	double start, end;
 	int i;
 	volatile bool terminate;
 
 	if(argc != 2 || !argv[1]) usage();
 	mpz_init_set_str(n, argv[1], 10);
 	mpz_init(res);
+	
+	GET_TIME(start)
+	terminate = false;
 
 	#pragma omp parallel for
 	for(i = 0; i < omp_get_num_threads(); ++i) {
@@ -76,6 +97,9 @@ int main(int argc, char **argv) {
 	
 	mpz_clear(n);
 	mpz_clear(res);
+	
+	GET_TIME(end);
+	printf("%g seconds\n", end - start);
 	
 	return 0;
 }
