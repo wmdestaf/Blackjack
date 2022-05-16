@@ -102,7 +102,7 @@ def next_safe_prime(bits, direction, INVERT_RANGE=False, IO=False, IOSTR=''):
         q = (2 * p) + 1
         if miller_rabin(q):
             if IO:
-                print(IOSTR,'DONE')
+                print('\r'+IOSTR,'DONE')
             return q
         p += 2 * direction
         p = next_prime(p, direction)
@@ -141,6 +141,8 @@ if __name__ == "__main__":
         off1 = 1 - off 
         p = next_prime(max(5, getrandbits(max(1,int(bits * off )))), -1)
         q = next_prime(max(5, getrandbits(max(1,int(bits * off1)))),  1)
+
+    print(p, q, sep='\n')
 
     #now, compute N=p*q, and phi(n)=(p-1)*(q-1)
     N = p * q

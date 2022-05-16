@@ -221,11 +221,7 @@ int get_bit(const mpz *a, unsigned int x) {
 void mul(mpz *rop, const mpz *op1, const mpz *op2) {
 	clear_mpz(rop);
 	mpz *tmp = create_mpz(0, op1->block_count);
-	
-	//with bit coarseness = 1, multiplication == operator&
-	//ls3 to shift. yw :-)
-	
-	//we will only consider the lower significant bits
+
 	int lsb = 8 * (op1->block_count >> 1);
 	int i, other;
 	for(i = 0; i < lsb; ++i) {

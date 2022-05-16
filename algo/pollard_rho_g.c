@@ -28,27 +28,23 @@ void usage() {
 	exit(1);
 }
 	
-void pollard_rho(const mpz_t n, mpz_t res, volatile bool *terminate) {
+void pollard_rho(const mpz_t n, mpz_t res, mpz_t start, volatile bool *terminate) {
 	mpz_t i, x, y, k, d, n1, ymx;
-	gmp_randstate_t state;
-	
-	//state init
-	gmp_randinit_mt(state);
 	
 	//variable init
 	mpz_inits(i, x, y, k, d, n1, ymx, NULL);
 	mpz_set_ui(i, 1);
-	mpz_urandomm(x, state, n);
+	
+	mpz_set(x, start);
+	//gmp_printf("%Zd\n", x);
+	
 	mpz_set(y, x);
 	mpz_set_ui(k, 2);
 	mpz_set(n1, n);
 	mpz_sub_ui(n1,n1,1); //n - 1
 
 	while(1) {
-		#pragma omp flush(terminate)
-		if(*terminate) {
-			//clean up
-			gmp_randclear(state);
+		if(*terminate) {			
 			mpz_clears(i,x,y,k,d,ymx,n1,NULL);
 			return;
 		}
@@ -68,9 +64,7 @@ void pollard_rho(const mpz_t n, mpz_t res, volatile bool *terminate) {
 		if(mpz_cmp_ui(d, 1) && mpz_cmp(d, n)) {
 			mpz_set(res, d);
 			mpz_abs(res, res);
-			
-			//clean up
-			gmp_randclear(state);
+
 			mpz_clears(i,x,y,k,d,ymx,n1,NULL);
 			return;
 		}
@@ -95,19 +89,35 @@ int main(int argc, char **argv) {
 	GET_TIME(start)
 	terminate = false;
 
-	#pragma omp parallel for
+	//state init
+	gmp_randinit_mt(state);
+
+
+	#pragma omp parallel for shared(terminate)
 	for(i = 0; i < omp_get_num_threads(); ++i) {
-		pollard_rho(n, res, &terminate);
+		mpz_t start_;
+		mpz_init(start_);
+		
+		#pragma omp critical
+		{
+			mpz_urandomm(start_, state, n);
+		}
+
+		pollard_rho(n, res, start_, &terminate);
 		
 		#pragma omp critical
 		if(!terminate) {
 			gmp_printf("%Zd\n",res);
+			GET_TIME(end);
+			printf("%g seconds\n", end - start);
+			exit(1);
 			terminate = true;
 		}
+		mpz_clear(start_);
 	}
 	
-	mpz_clear(n);
-	mpz_clear(res);
+	mpz_clears(n, res, NULL);
+	gmp_randclear(state);
 	
 	GET_TIME(end);
 	printf("%g seconds\n", end - start);
