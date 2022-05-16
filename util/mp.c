@@ -333,7 +333,7 @@ void idiv(mpz *rop, const mpz *op1, const mpz *op2, mpz *rem, mpz *tmp) {
 	int provided1 = !!tmp;
 	if(!provided) tmp = create_mpz(0, op1->block_count);
 	
-	clear_mpz(rop);
+	if(rop) clear_mpz(rop);
 	clear_mpz(rem);
 	
 	int i = bit_count(op1) - 1;
