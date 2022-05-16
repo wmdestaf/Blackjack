@@ -1,13 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "mp.h"
+
 #define ctoi(c) ((unsigned int)(c - '0'))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
-
-typedef struct {
-	unsigned char *blocks; //little endian
-	int block_count;
-} mpz;
 
 int str_len(char *in) {
 	int ct;
@@ -64,13 +61,15 @@ mpz *create_mpz(int bits, int block) {
 }
 
 int compare(const mpz *a, const mpz *b) {
-	if(a->block_count != b->block_count) return 0;
-	
+	if(a->block_count != b->block_count)
+		b->block_count > a->block_count ? -1 : 1;
+		
 	int i;
-	for(i = 0; i < a->block_count; ++i) {
-		if(a->blocks[i] != b->blocks[i]) return 0;
+	for(i = a->block_count - 1; i >= 0; --i) {
+		if(a->blocks[i] != b->blocks[i])
+			return b->blocks[i] > a->blocks[i] ? -1 : 1;
 	}
-	return 1;
+	return 0;
 }
 
 //1 = true, 0 = false
@@ -219,6 +218,16 @@ void ls3(mpz *rop, const mpz *op, unsigned int n) {
 	}
 }
 
+void set_bit(mpz *a, unsigned int x) {
+	unsigned char mask = 1 << (x % 8);
+	a->blocks[(x / 8)] |= mask;
+}
+
+void clear_bit(mpz *a, unsigned int x) {
+	unsigned char mask = 1 << (x % 8);
+	a->blocks[(x / 8)] &= ~mask;
+}
+
 int get_bit(const mpz *a, unsigned int x) {
 	unsigned char block = a->blocks[(x / 8)];
 	return 0x1 & (block >> (x % 8));
@@ -244,15 +253,6 @@ void mul(mpz *rop, const mpz *op1, const mpz *op2, mpz *tmp) {
 	}
 	
 	if(!provided) destroy_mpz(tmp);
-}
-
-void idiv(mpz *rop, const mpz *op1, const mpz *op2) {
-	
-}
-
-//a mod b = a - floor(a / b) * b
-void mod(mpz *rop, const mpz *op1, const mpz *op2) {
-	
 }
 
 int bit_count(const mpz *a) {
@@ -283,13 +283,6 @@ void lower(mpz *a, int n) {
 		else
 			a->blocks[i] = 0x00;
 	}
-}
-
-void abs_sub(mpz *rop, const mpz *op1, const mpz *op2) {
-	add(rop, op1, op2);
-	inv(rop);
-	inc(rop);
-	lower(rop, MAX(bit_count(op1), bit_count(op2)));
 }
 
 void load_mpz_str(mpz *rop, char *in) {
@@ -328,19 +321,45 @@ void load_mpz_str(mpz *rop, char *in) {
 	destroy_mpz(rs2);
 }
 
-int main(int argc, char **argv) {
-	mpz *a = create_mpz(2 * safe_bit_ct(argv[1]), 0);
-	load_mpz_str(a, argv[1]);
-	print_mpz(a);
-	destroy_mpz(a);
+void push_bit(mpz *rop, int bit) {
+	ls2(rop);
+	rop->blocks[0] |= (bit & 0x1);
 }
 
+void idiv(mpz *rop, const mpz *op1, const mpz *op2, mpz *rem, mpz *tmp) {
+	//set up memory
+	int provided  = !!rem;
+	if(!provided) rem = create_mpz(0, op1->block_count);
+	int provided1 = !!tmp;
+	if(!provided) tmp = create_mpz(0, op1->block_count);
+	
+	clear_mpz(rop);
+	clear_mpz(rem);
+	
+	int i = bit_count(op1) - 1;
+	while(i != -1) {
+		push_bit(rem, get_bit(op1, i));
+		if(compare(rem, op2) < 0) {
+			if(rop) push_bit(rop, 0);
+		}
+		else {
+			if(rop) push_bit(rop, 1);
+			abs_sub(tmp, rem, op2);
+			load(rem, tmp);
+		}
+		i -= 1;
+	}
+	if(!provided)  destroy_mpz(rem);
+	if(!provided1) destroy_mpz(tmp);
+}
 
-
-
-
-
-
-
-
-
+void abs_sub(mpz *rop, const mpz *op1, const mpz *op2) {
+	int cut = MAX(bit_count(op1), bit_count(op2));
+	
+	load(rop, op2);
+	inv(rop);
+	inc(rop);
+	
+	add(rop, rop, op1);
+	lower(rop, cut);
+}
