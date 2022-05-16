@@ -41,11 +41,14 @@ void load(mpz *rop, const mpz *op1) {
 	}
 }
 
-mpz *create_mpz(int bits) {
+mpz *create_mpz(int bits, int block) {
 	mpz *this = malloc(sizeof(mpz));
-	this->block_count = (bits >> 3) + 1;
-	this->blocks = calloc(this->block_count,
-	                      sizeof(char));
+	if(!block)
+		this->block_count = (bits >> 3) == 0 ? 1 : (bits >> 3);
+	else
+		this->block_count = block;
+	
+	this->blocks = calloc(this->block_count,sizeof(char));
 	return this;
 }
 
@@ -101,7 +104,7 @@ void print_mpz(const mpz *rop) {
 	}
 	bin[j] = '\0';
 
-	//printf("%s\n",bin);
+	printf("%s\n",bin);
 
 	//buf
 	sprintf(buf, "echo \"ibase=2;%s\"|bc", bin);
@@ -139,10 +142,10 @@ int dec(mpz *rop) {
 	return carry;
 }
 
-int inv(mpz *rop, const mpz *op) {
+int inv(mpz *rop) {
 	int i;
-	for(i = 0; i < op->block_count; ++i) {
-		rop->blocks[i] = ~(op->blocks[i]);
+	for(i = 0; i < rop->block_count; ++i) {
+		rop->blocks[i] = ~rop->blocks[i];
 	}
 }
 
@@ -151,10 +154,37 @@ int add(mpz *rop, const mpz *op, const mpz *op2) {
 	int i, sum, overflow = 0;
 	for(i = 0; i < op->block_count; ++i) {
 		sum = op->blocks[i] + op2->blocks[i] + overflow;
-		rop->blocks[i] = sum > 0xFF ? 0x00 : sum;
-		overflow = sum - 0xFF > 0 ? sum - 0xFF : 0;       
+		rop->blocks[i] = sum & 0xFF;
+		overflow = sum >> 8;
 	}
 	return overflow;
+}
+
+
+int shift_add(mpz *rop, const mpz *op, const mpz *op2, int off8) {
+	int i, sum, overflow = 0;
+	for(i = 0; i < op->block_count; ++i) {
+		//todo: remove branching
+		if(i - off8 < 0)
+			sum = op->blocks[i] + overflow;
+		else
+			sum = op->blocks[i] + op2->blocks[i - off8] + overflow;
+			
+		rop->blocks[i] = sum & 0xFF;
+		overflow = sum >> 8;
+	}
+	return overflow;
+}
+
+void ls4(mpz *rop, const mpz *op, int off8) {
+	int i;
+	for(i = op->block_count - 1; i >= off8; --i) {
+		rop->blocks[i] = op->blocks[i - off8];
+	}
+	
+	for(i = 0; i < off8; ++i) {
+		rop->blocks[i] = 0x00;
+	}
 }
 
 void ls2(mpz *rop) {
@@ -167,8 +197,47 @@ void ls2(mpz *rop) {
 	}
 }
 
+void ls3(mpz *rop, const mpz *op, unsigned int n) {
+	int i, cur, old = 0, mask, mask2;
+	mask  = (2 << n) - 1;
+	mask2 = mask << (8 - n);
+	for(i = 0; i < rop->block_count; ++i) {
+		//paste
+		rop->blocks[i] = op->blocks[i];
+		
+		cur = (rop->blocks[i] & mask2) >> (8 - n);
+		rop->blocks[i] <<= n;
+		rop->blocks[i] |= old;
+		old = cur;
+	}
+}
+
+int get_bit(const mpz *a, unsigned int x) {
+	unsigned char block = a->blocks[(x / 8)];
+	return 0x1 & (block >> (x % 8));
+}	
+
 void mul(mpz *rop, const mpz *op1, const mpz *op2) {
+	clear_mpz(rop);
+	mpz *tmp = create_mpz(0, op1->block_count);
 	
+	//with bit coarseness = 1, multiplication == operator&
+	//ls3 to shift. yw :-)
+	
+	//we will only consider the lower significant bits
+	int lsb = 8 * (op1->block_count >> 1);
+	int i, other;
+	for(i = 0; i < lsb; ++i) {
+		other = get_bit(op2, i);
+		
+		//todo: no branch
+		if(other) {
+			ls4(tmp,op1, i / 8);
+			ls3(tmp,tmp, i % 8);
+			add(rop,rop,tmp);
+		}
+	}
+	destroy_mpz(tmp);
 }
 
 void idiv(mpz *rop, const mpz *op1, const mpz *op2) {
@@ -180,12 +249,19 @@ void mod(mpz *rop, const mpz *op1, const mpz *op2) {
 	
 }
 
+void sub(mpz *rop, const mpz *op1, const mpz *op2) {
+
+}
+
 int main(int argc, char **argv) {
-	mpz *a = create_mpz(32), *b = create_mpz(32), *c = create_mpz(32);
+	mpz *a = create_mpz(0,4), *b = create_mpz(0,4), *c = create_mpz(0,4);
 	
-	load_ui(a, 12);
-	load_ui(b, 20);
-	mod(c, a, b);
+	load_ui(a, 512);
+	print_mpz(a);
+	load_ui(b, 512);
+	print_mpz(b);
+	
+	mul(c, a, b);
 	print_mpz(c);
 	
 	destroy_mpz(a);
