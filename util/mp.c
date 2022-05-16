@@ -24,7 +24,7 @@ int safe_bit_ct(char *in) {
 	
 	ct = 4 * str_len(in);
 	while(ct % 4) { ++ct; }
-	return ct;
+	return MAX(8 * sizeof(unsigned int), ct);
 }
 
 void load_ui(mpz *rop, unsigned int in) {
@@ -39,6 +39,16 @@ void load(mpz *rop, const mpz *op1) {
 	int i;
 	for(i = 0; i < rop->block_count; ++i) {
 		rop->blocks[i] = op1->blocks[i];
+	}
+}
+
+void swap(mpz *op1, mpz *op2) {
+	int i;
+	unsigned char tmp;
+	for(i = 0; i < op1->block_count; ++i) {
+		tmp = op1->blocks[i];
+		op1->blocks[i] = op2->blocks[i];
+		op2->blocks[i] = tmp;
 	}
 }
 
@@ -77,10 +87,6 @@ int compare0(const mpz *a) {
 void destroy_mpz(mpz *op) {
 	free(op->blocks);
 	free(op);
-}
-
-void load_mpz_str(mpz *rop, char *in) {
-	//TODO
 }
 
 void clear_mpz(mpz *rop) {
@@ -218,9 +224,11 @@ int get_bit(const mpz *a, unsigned int x) {
 	return 0x1 & (block >> (x % 8));
 }	
 
-void mul(mpz *rop, const mpz *op1, const mpz *op2) {
+void mul(mpz *rop, const mpz *op1, const mpz *op2, mpz *tmp) {
 	clear_mpz(rop);
-	mpz *tmp = create_mpz(0, op1->block_count);
+	
+	int provided = !!tmp;
+	if(!provided) tmp = create_mpz(0, op1->block_count);
 
 	int lsb = 8 * (op1->block_count >> 1);
 	int i, other;
@@ -234,7 +242,8 @@ void mul(mpz *rop, const mpz *op1, const mpz *op2) {
 			add(rop,rop,tmp);
 		}
 	}
-	destroy_mpz(tmp);
+	
+	if(!provided) destroy_mpz(tmp);
 }
 
 void idiv(mpz *rop, const mpz *op1, const mpz *op2) {
@@ -283,23 +292,47 @@ void abs_sub(mpz *rop, const mpz *op1, const mpz *op2) {
 	lower(rop, MAX(bit_count(op1), bit_count(op2)));
 }
 
+void load_mpz_str(mpz *rop, char *in) {
+	mpz *off, *ten, *par, *rs1, *rs2;
+	
+	clear_mpz(rop);
+	
+	off = create_mpz(2 * safe_bit_ct(in), 0);
+	ten = create_mpz(2 * safe_bit_ct(in), 0);
+	par = create_mpz(2 * safe_bit_ct(in), 0);
+	rs1 = create_mpz(2 * safe_bit_ct(in), 0);
+	rs2 = create_mpz(0, sizeof(unsigned int)); 
+	load_ui(off, 1);
+	load_ui(ten, 10);
+	
+	int i, j;
+	for(i = str_len(in) - 1, j = 0; i >= 0; --i, ++j) {
+		// load digit into 'result2'
+		load_ui(rs2, ctoi(in[i]));
+
+		// 'result1' = digit * power of 10
+		mul(rs1, off, rs2, NULL); //OK to ask for a buffer here
+
+		//add 'result1' to accumulator, rop
+		add(rop, rop, rs1);
+		
+		//off *= 10
+		mul(par, off, ten, NULL);
+		load(off, par);
+	}
+	
+	destroy_mpz(off);
+	destroy_mpz(ten);
+	destroy_mpz(par);
+	destroy_mpz(rs1);
+	destroy_mpz(rs2);
+}
+
 int main(int argc, char **argv) {
-	mpz *a = create_mpz(0,4), *b = create_mpz(0,4), *c = create_mpz(0,4);
-
-	load_ui(a, 16);
+	mpz *a = create_mpz(2 * safe_bit_ct(argv[1]), 0);
+	load_mpz_str(a, argv[1]);
 	print_mpz(a);
-	printf("%d\n", bit_count(a));
-	
-	load_ui(b, 4);
-	print_mpz(b);
-	printf("%d\n", bit_count(b));
-
-	abs_sub(c, a, b);
-	print_mpz(c);
-	
 	destroy_mpz(a);
-	destroy_mpz(b);
-	destroy_mpz(c);
 }
 
 
