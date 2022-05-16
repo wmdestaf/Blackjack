@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #define ctoi(c) ((unsigned int)(c - '0'))
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
 typedef struct {
 	unsigned char *blocks; //little endian
@@ -249,19 +250,55 @@ void mod(mpz *rop, const mpz *op1, const mpz *op2) {
 	
 }
 
-void sub(mpz *rop, const mpz *op1, const mpz *op2) {
+int bit_count(const mpz *a) {
+	int i, ct = 0;
+	for(i = a->block_count - 1; i >= 0; --i) {
+		unsigned char block = a->blocks[i];
+		int j;
+		for(j = 0; j < 8; ++j) {
+			if(!!(block & 0x80)) {
+				return (a->block_count * 8) - ct;
+			}
+			block <<= 1;
+			ct++;
+		}
+	}
+	return 0; // 0x0
+}
 
+void lower(mpz *a, int n) {
+	int i;
+	for(i = 0; i < a->block_count; ++i) {
+		if(n > 8)
+			n -= 8;
+		else if(n > 0) { 
+			a->blocks[i] &= ((1 << n) - 1);
+			n = 0;
+		}
+		else
+			a->blocks[i] = 0x00;
+	}
+}
+
+void abs_sub(mpz *rop, const mpz *op1, const mpz *op2) {
+	add(rop, op1, op2);
+	inv(rop);
+	inc(rop);
+	lower(rop, MAX(bit_count(op1), bit_count(op2)));
 }
 
 int main(int argc, char **argv) {
 	mpz *a = create_mpz(0,4), *b = create_mpz(0,4), *c = create_mpz(0,4);
-	
-	load_ui(a, 512);
+
+	load_ui(a, 16);
 	print_mpz(a);
-	load_ui(b, 512);
-	print_mpz(b);
+	printf("%d\n", bit_count(a));
 	
-	mul(c, a, b);
+	load_ui(b, 4);
+	print_mpz(b);
+	printf("%d\n", bit_count(b));
+
+	abs_sub(c, a, b);
 	print_mpz(c);
 	
 	destroy_mpz(a);
