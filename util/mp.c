@@ -73,7 +73,7 @@ int compare(const mpz *a, const mpz *b) {
 }
 
 //1 = true, 0 = false
-int compare1(const mpz *a) { return a->blocks[0] & 1; }
+int compare1(const mpz *a) { return a->blocks[0] == 1; }
 
 int compare0(const mpz *a) {
 	int i;
@@ -110,7 +110,7 @@ void print_mpz(const mpz *rop) {
 	}
 	bin[j] = '\0';
 
-	printf("%s\n",bin);
+	//printf("%s\n",bin);
 
 	//buf
 	sprintf(buf, "echo \"ibase=2;%s\"|bc", bin);
@@ -290,11 +290,11 @@ void load_mpz_str(mpz *rop, char *in) {
 	
 	clear_mpz(rop);
 	
-	off = create_mpz(2 * safe_bit_ct(in), 0);
-	ten = create_mpz(2 * safe_bit_ct(in), 0);
-	par = create_mpz(2 * safe_bit_ct(in), 0);
-	rs1 = create_mpz(2 * safe_bit_ct(in), 0);
-	rs2 = create_mpz(0, sizeof(unsigned int)); 
+	off = create_mpz(0, rop->block_count);
+	ten = create_mpz(0, rop->block_count);
+	par = create_mpz(0, rop->block_count);
+	rs1 = create_mpz(0, rop->block_count);
+	rs2 = create_mpz(0, rop->block_count); 
 	load_ui(off, 1);
 	load_ui(ten, 10);
 	
@@ -302,6 +302,7 @@ void load_mpz_str(mpz *rop, char *in) {
 	for(i = str_len(in) - 1, j = 0; i >= 0; --i, ++j) {
 		// load digit into 'result2'
 		load_ui(rs2, ctoi(in[i]));
+		//printf("%d\n",ctoi(in[i]));
 
 		// 'result1' = digit * power of 10
 		mul(rs1, off, rs2, NULL); //OK to ask for a buffer here

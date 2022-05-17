@@ -45,6 +45,10 @@ void idiv(mpz *rop, const mpz *op1, const mpz *op2,
                                      mpz *rem, mpz *tmp);
 
 
+int compare(const mpz *a, const mpz *b);
+int compare1(const mpz *a);
+int compare0(const mpz *a);
+
 void swap(mpz *op1, mpz *op2);
 
 void print_mpz(const mpz *rop);
