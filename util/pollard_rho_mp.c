@@ -97,21 +97,7 @@ int done(pollard_rho_state_t *state) {
 	return 0;
 }
 
-/*
-i = 1
-x = Random(0, n − 1)
-y = x
-k = 2
-while True
-	i = i + 1
-	x = (x^2 - 1) mod n
-	d = gcd(y − x, n)
-	if d != 1 and d != n
-		return d
-	if i == k
-		y = x
-		k <<= 1
-*/
+
 
 void pollard_rho(mpz *n, randstate_t *state) {
 	int i = 1, k = 2;
