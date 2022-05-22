@@ -115,7 +115,7 @@ void add(mpz *rop, const mpz *op1, const mpz *op2) {
 	
 	overflow = 0L;
 	for(i = 0; i < op1->block_count; ++i) {
-		sum = (long)op1->blocks[i] + (long)op2->blocks[i] 
+		sum = (unsigned long)op1->blocks[i] + (unsigned long)op2->blocks[i] 
 		                           + overflow;
 		rop->blocks[i] = sum & 0xFFFFFFFF;
 		overflow = sum >> 32;
@@ -130,13 +130,13 @@ void add_ui(mpz *rop, const mpz *op1, unsigned int op2) {
 	unsigned long sum;
 	
 	//unroll first loop
-	sum = (long)*op1->blocks + op2;
+	sum = (unsigned long)*op1->blocks + op2;
 	*rop->blocks = sum & 0xFFFFFFFF;
 	overflow = sum >> 32;
 	
 	//propagate carry
 	for(i = 1; i < op1->block_count; ++i) {
-		sum = (long)op1->blocks[i] + overflow;
+		sum = (unsigned long)op1->blocks[i] + overflow;
 		rop->blocks[i] = sum & 0xFFFFFFFF;
 		overflow = sum >> 32;
 	}
@@ -151,8 +151,8 @@ void subtract(mpz *rop, const mpz *op1, const mpz *op2) {
 	for(i = 0; i < op1->block_count; ++i) {
 		
 		//perform the subtraction
-		diff = (long)op1->blocks[i] - (long)op2->blocks[i]
-		                            - borrow;
+		diff = (unsigned long)op1->blocks[i] - 
+		       (unsigned long)op2->blocks[i] - borrow;
 		//calculate borrow
 		borrow = (diff & 0x80000000) >> 31;	
 		
@@ -321,21 +321,64 @@ mpz *gcd(mpz *u, mpz *v) {
 	}
 }
 
+void add_lu_off(mpz *rop, const mpz *op1, unsigned long op2,
+                                          int off8) {
+	int i;
+	unsigned long overflow;
+	unsigned long sum;
+
+	//set low
+	for(i = 0; i < off8; ++i) {
+		rop->blocks[i] = op1->blocks[i];
+	}
+
+	//unroll first loop
+	sum = (unsigned long)op1->blocks[off8] + (op2 & 0xFFFFFFFF);
+	rop->blocks[off8] = sum & 0xFFFFFFFF;
+	overflow = sum >> 32;
+	
+	//unroll second loop
+	sum = (unsigned long)op1->blocks[off8 + 1] + (op2 >> 32);
+	rop->blocks[off8 + 1] = sum & 0xFFFFFFFF;
+	overflow = sum >> 32;
+	
+	//propagate carry
+	for(i = off8 + 2; i < op1->block_count; ++i) {
+		sum = (unsigned long)op1->blocks[i] + overflow;
+		rop->blocks[i] = sum & 0xFFFFFFFF;
+		overflow = sum >> 32;
+	}
+}
+
+void square(mpz *rop, const mpz *op) {
+	int i, j;
+	unsigned long product;
+	
+	zero(rop); //needed?
+
+	for(i = 0; i < op->block_count; ++i) {
+		for(j = 0; j < op->block_count; ++j) {
+			printf("Block %d (loff %d)\n", j, i);
+			product = op->blocks[i] * op->blocks[j];
+			add_lu_off(rop, rop, product, i + j);
+		}
+	}		
+}
+
 int main() {
 	mpz *x, *y, *z;
-	x = create_mpz(2);
-	y = create_mpz(2);
+	x = create_mpz(4);
+	y = create_mpz(4);
 	
-	load_ui(x, 0x06000000, 1);
-	load_ui(y, 0x04000000, 1);
+	load_ui(x, 4, 0);
+	load_ui(x, 5, 1);
 	print(x,0);
 	print(x,1);
-	print(y,0);
-	print(y,1);
-
-	z = gcd(x,y);
-	print(z, 0);
-	print(z, 1);
+	
+	square(y, x);
+	print(y, 0);
+	print(y, 1);
+	
 
 	destroy_mpz(x);
 	destroy_mpz(y);
