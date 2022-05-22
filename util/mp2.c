@@ -70,38 +70,6 @@ int compare1(const mpz *op) {
 	return *(op->blocks) == 1;
 }
 
-int clz(const mpz *op1) {
-	
-}
-
-int ctz(const mpz *op2) {
-	
-}
-
-void ls(unsigned int bits) {
-	
-}
-
-void ls2(mpz *rop, const mpz *op, unsigned int off8) {
-	int i;
-	for(i = op->block_count - 1; i >= off8; --i) {
-		rop->blocks[i] = op->blocks[i - off8];
-	}
-	
-	for(i = 0; i < off8; ++i) {
-		rop->blocks[i] = 0x00;
-	}
-}
-
-void rs(unsigned int bits) {
-	
-}
-
-void rs2(unsigned int off8) {
-	int i;
-
-}
-
 void print_ui(unsigned int x, char *buf) {
 	int i;
 	for(i = 0; i < 32; ++i) {
@@ -198,7 +166,8 @@ void subtract(mpz *rop, const mpz *op1, const mpz *op2) {
 		if(borrow) {
 			diff += 0x200000000;
 		}
-		rop->blocks[i] = diff;
+		
+		rop->blocks[i] = diff & 0xFFFFFFFF;
 	}
 }
 
@@ -219,36 +188,115 @@ void difference(mpz *rop, const mpz *op1, const mpz *op2) {
 	subtract(rop, high, low);
 }
 
+//This is slow. But once ported, can replace with:
+/**
+	function ctz (uint x)
+		x &= -x
+		return 32 - (__clz(x) + 1)
+*/
+unsigned int ctz_(unsigned int x) {
+    unsigned int n;
+	n = 0;
+    if ((x & 0x0000FFFF) == 0) {
+		n = n + 16;
+		x = x >> 16;
+	}
+    if ((x & 0x000000FF) == 0) {
+		n = n + 8;
+		x = x >> 8;
+	}
+    if ((x & 0x0000000F) == 0) {
+		n = n + 4;
+		x = x >> 4;
+	}
+    if ((x & 0x00000003) == 0) {
+		n = n + 2;
+		x = x >> 2;
+	}
+    if ((x & 0x00000001) == 0) {
+		n = n + 1;
+	}
+    return n;
+}
+
+unsigned int ctz(const mpz *op) {
+	int i, ct;
+	unsigned int x;
+	
+	ct = 0;
+	for(i = 0; i < op->block_count; ++i) {
+		x = op->blocks[i];
+		if(x) return ct + ctz_(x);
+		ct += sizeof(unsigned int);
+	}
+	return ct;
+}
+
+//shift within a block (0 <= bits <= 31)
+void ls(mpz *rop, const mpz *op, unsigned int bits) {
+	int i;
+	unsigned int  carry = 0x00000000;
+	unsigned long copy  = 0x00000000;
+
+	for(i = 0; i < op->block_count; ++i) {
+		copy = op->blocks[i];
+		rop->blocks[i] = (copy << bits) + carry;
+		carry = copy >> (32 - bits);
+	}
+}
+
+//shift by blocks
+void ls2(mpz *rop, const mpz *op, int off8) {
+	int i;
+	
+	for(i = op->block_count - 1; i >= off8; --i) {
+		rop->blocks[i] = op->blocks[i - off8];
+	}
+	
+	for(i = 0; i < off8; ++i) {
+		rop->blocks[i] = 0x00;
+	}
+}
+
+//shift by arbitrary bit ct
+void ls3(mpz *rop, const mpz *op, unsigned int bits) {
+	ls2(rop, op,  bits / 32);
+	ls (rop, rop, bits % 32);
+}
+
+void rs(mpz *rop, const mpz *op, unsigned int bits) {
+
+}
+
+void rs2(mpz *rop, const mpz *op, unsigned int off8) {
+
+}
+
+void rs3(mpz *rop, const mpz *op, unsigned int bits) {
+
+}
 
 
 int main() {
-	mpz *x, *y, *z;
-	x = create_mpz(4);
-	y = create_mpz(4);
-	z = create_mpz(4);
-	
-	load_ui(x, 87,     3);
-	load_ui(x, 99999,  2);
-	load_ui(x, 198,    1);
-	load_ui(x, 201302, 0);
-	load_ui(y, 80,     3);
-	load_ui(y, 100001, 2);
-	load_ui(y, 200002, 1);
-	load_ui(y, 33334,  0);
+	mpz *x, *y;
+	x = create_mpz(3);
+	y = create_mpz(3);
 
-	print(x, 0);
-	print(x, 1);
-	print(y, 0);
-	print(y, 1);
-	
-	printf("\n\n");
-	
-	subtract(z, x, y);
+	load_ui(x, 0xFFFFFFFF, 0);
+	//print(x,0);
 
-	print(z, 0);
-	print(z, 1);
-	
+	/*
+	rs2(x,x,1);
+	print(x,0);
+	*/
 
+	for(int i = 0; i <= 64; ++i) {
+		ls3  (y, x, i);
+		print(y, 0   );
+	}
+	
+	destroy_mpz(x);
+	destroy_mpz(y);
 	return 0;
 }
 
