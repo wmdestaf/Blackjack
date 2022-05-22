@@ -100,12 +100,6 @@ void print(const mpz *x, int decimal) {
 	free(buf);
 }
 
-void inv(mpz *rop, const mpz *op1) {
-	int i;
-	for(i = 0; i < op1->block_count; ++i) {
-		rop->blocks[i] = ~op1->blocks[i];
-	}
-}
 
 void zero(mpz *op) {
 	int i;
@@ -227,7 +221,7 @@ unsigned int ctz(const mpz *op) {
 	for(i = 0; i < op->block_count; ++i) {
 		x = op->blocks[i];
 		if(x) return ct + ctz_(x);
-		ct += sizeof(unsigned int);
+		ct += 32;
 	}
 	return ct;
 }
@@ -287,23 +281,61 @@ void rs2(mpz *rop, const mpz *op, unsigned int off8) {
 	}
 }
 
-void rs3(mpz *rop, const mpz *op, unsigned int bits) {w
+void rs3(mpz *rop, const mpz *op, unsigned int bits) {
 	rs2(rop, op,  bits / 32);
 	rs (rop, rop, bits % 32);
 }
 
+//gcd -> gcd. THIS SCRAMBLES BOTH ARGUMENTS
+//adapted from rust's uutils binary GCD
+mpz *gcd(mpz *u, mpz *v) {
+	int i, j, k;
+	mpz *t;
+	
+	if     (compare0(u)) return u;
+	else if(compare0(v)) return v;
+	
+	i = ctz(u);
+	rs3(u, u, i);
+	
+	j = ctz(v);
+	rs3(v, v, j);
+	
+	k = i < j ? i : j;
+	
+	while(1) {
+		if(compare(u, v) > 0) {
+			t = u;
+			u = v;
+			v = t;
+		}
+		
+		subtract(v, v, u);
+		
+		if(compare0(v)) {
+			ls3(u, u, k);
+			return u;
+		}
+		
+		rs3(v, v, ctz(v));
+	}
+}
 
 int main() {
-	mpz *x, *y;
-	x = create_mpz(3);
-	y = create_mpz(3);
+	mpz *x, *y, *z;
+	x = create_mpz(2);
+	y = create_mpz(2);
 	
-	load_ui(x, 0xFFFFFFFF, 2);
+	load_ui(x, 0x06000000, 1);
+	load_ui(y, 0x04000000, 1);
 	print(x,0);
-	printf("\n");
+	print(x,1);
+	print(y,0);
+	print(y,1);
 
-	rs3(x, x, 1);
-	print(x, 0);
+	z = gcd(x,y);
+	print(z, 0);
+	print(z, 1);
 
 	destroy_mpz(x);
 	destroy_mpz(y);
