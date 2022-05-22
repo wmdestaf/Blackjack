@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <limits.h>
 
-#define MAX(x, y) (((x) > (y)) ? (x) : (y))
-
 typedef struct {
 	unsigned int *blocks;
 	unsigned int block_count;
@@ -33,7 +31,7 @@ void swap(mpz *op1, mpz *op2) {
 }
 
 void load(mpz *rop, const mpz *op) {
-	if(rop == op) return; //save time
+	if(rop == op) return; //save time maybe
 	
 	int i;
 	for(i = 0; i < op->block_count; ++i) {
@@ -88,9 +86,9 @@ void print(const mpz *x, int decimal) {
 		         buf + (32 * (x->block_count - i - 1)));
 	}
 	
-	if(decimal) { //lul i'm not writing IDIV
+	if(decimal) {
 		cmd = calloc(1, 255 + (32 * x->block_count));
-		sprintf(cmd, "echo \"ibase=2;%s\"|bc", buf);
+		sprintf(cmd, "echo \"ibase=2;%s\"|bc", buf); //LOL
 		system(cmd);
 		free(cmd);
 	}
@@ -338,7 +336,8 @@ void add_lu_off(mpz *rop, const mpz *op1, unsigned long op2,
 	overflow = sum >> 32;
 	
 	//unroll second loop
-	sum = (unsigned long)op1->blocks[off8 + 1] + (op2 >> 32);
+	sum = (unsigned long)op1->blocks[off8 + 1] + (op2 >> 32)
+	                                           + overflow;
 	rop->blocks[off8 + 1] = sum & 0xFFFFFFFF;
 	overflow = sum >> 32;
 	
@@ -358,11 +357,21 @@ void square(mpz *rop, const mpz *op) {
 
 	for(i = 0; i < op->block_count; ++i) {
 		for(j = 0; j < op->block_count; ++j) {
-			printf("Block %d (loff %d)\n", j, i);
-			product = op->blocks[i] * op->blocks[j];
+			product = (unsigned long)op->blocks[i] * 
+			          (unsigned long)op->blocks[j];
 			add_lu_off(rop, rop, product, i + j);
 		}
 	}		
+}
+
+void mpz_random(mpz *rop) {
+	
+}
+
+void load_create(mpz *rop, const char *string) {
+	int len;
+	//get length
+	//for(
 }
 
 int main() {
@@ -370,13 +379,13 @@ int main() {
 	x = create_mpz(4);
 	y = create_mpz(4);
 	
-	load_ui(x, 4, 0);
-	load_ui(x, 5, 1);
-	print(x,0);
+	load_ui(x, 0xBBBBAAAA, 0);
+	load_ui(x, 0xDDDDCCCC, 1);
+	//print(x,0);
 	print(x,1);
 	
 	square(y, x);
-	print(y, 0);
+	//print(y, 0);
 	print(y, 1);
 	
 
