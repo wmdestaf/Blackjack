@@ -265,15 +265,31 @@ void ls3(mpz *rop, const mpz *op, unsigned int bits) {
 }
 
 void rs(mpz *rop, const mpz *op, unsigned int bits) {
+	int i;
+	unsigned long carry = 0x00000000;
+	unsigned long copy  = 0x00000000;
 
+	for(i = op->block_count - 1; i >= 0; --i) {
+		copy = op->blocks[i];
+		rop->blocks[i] = (copy >> bits) + (carry << (32 - bits));
+		carry = copy & ( (1 << bits) - 1 );
+	}
 }
 
 void rs2(mpz *rop, const mpz *op, unsigned int off8) {
-
+	int i;
+	for(i = 0; i <= op->block_count - off8; ++i) {
+		rop->blocks[i] = op->blocks[i + off8];
+	}
+	
+	for(i = op->block_count - off8 + 1; i < op->block_count; ++i) {
+		rop->blocks[i] = 0x00;
+	}
 }
 
-void rs3(mpz *rop, const mpz *op, unsigned int bits) {
-
+void rs3(mpz *rop, const mpz *op, unsigned int bits) {w
+	rs2(rop, op,  bits / 32);
+	rs (rop, rop, bits % 32);
 }
 
 
@@ -281,20 +297,14 @@ int main() {
 	mpz *x, *y;
 	x = create_mpz(3);
 	y = create_mpz(3);
-
-	load_ui(x, 0xFFFFFFFF, 0);
-	//print(x,0);
-
-	/*
-	rs2(x,x,1);
-	print(x,0);
-	*/
-
-	for(int i = 0; i <= 64; ++i) {
-		ls3  (y, x, i);
-		print(y, 0   );
-	}
 	
+	load_ui(x, 0xFFFFFFFF, 2);
+	print(x,0);
+	printf("\n");
+
+	rs3(x, x, 1);
+	print(x, 0);
+
 	destroy_mpz(x);
 	destroy_mpz(y);
 	return 0;
