@@ -44,7 +44,7 @@ void pollard_rho(const mpz_t n, mpz_t res, mpz_t start, volatile bool *terminate
 	mpz_sub_ui(n1,n1,1); //n - 1
 
 	while(1) {
-		if(*terminate) {			
+		if(*terminate) {
 			mpz_clears(i,x,y,k,d,ymx,n1,NULL);
 			return;
 		}
@@ -109,8 +109,6 @@ int main(int argc, char **argv) {
 		if(!terminate) {
 			gmp_printf("%Zd\n",res);
 			GET_TIME(end);
-			printf("%g seconds\n", end - start);
-			exit(1);
 			terminate = true;
 		}
 		mpz_clear(start_);
