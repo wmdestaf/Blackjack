@@ -2,12 +2,10 @@
 #include <stdlib.h>
 #include <limits.h>
 
+#include "mp2.h"
+
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
-typedef struct {
-	unsigned int *blocks;
-	unsigned int block_count;
-} mpz;
 
 mpz *create_mpz(unsigned int block_ct) {
 	mpz *this = malloc(sizeof(mpz));
@@ -320,20 +318,37 @@ void add_lu_off(mpz *rop, const mpz *op1, unsigned long op2,
 	}
 }
 
-void square(mpz *rop, const mpz *op) {
-	int i, j;
-	unsigned long product;
-	
-	zero(rop); //needed?
 
-	for(i = 0; i < op->block_count; ++i) {
-		for(j = 0; j < op->block_count; ++j) {
-			product = (unsigned long)op->blocks[i] * 
-			          (unsigned long)op->blocks[j];
-					  
-			add_lu_off(rop, rop, product, i + j);
+void mul(mpz *rop, const mpz *op1, const mpz *op2) {
+	int a, b;
+	unsigned long carry, a_block, b_block;
+	
+	int halb = (op1->block_count >> 1) + (op2->block_count >> 1);
+	unsigned long product[halb];
+	for(a = 0; a < halb; ++a) product[a] = 0L;
+	
+	for(b = 0; b < (op2->block_count >> 1); ++b) {
+		carry = 0L;
+		b_block = op2->blocks[b];
+		for(a = 0; a < (op1->block_count >> 1); ++a) {
+			a_block = op1->blocks[a];
+
+			product[a + b] += carry + (a_block * b_block);
+			
+			carry = product[a + b] / UINT_MAX;
+			
+			product[a + b] &= UINT_MAX;
 		}
-	}		
+		product[b + a] += (unsigned int)carry; //last carry
+	}
+
+	for(a = 0; a < halb; ++a) {
+		rop->blocks[a] = product[a] & 0xFFFFFFFF;
+    }
+	
+	for(a = halb; a < rop->block_count; ++a) { 
+		rop->blocks[a] = 0x00000000; //likely won't run
+	}
 }
 
 int str_len(const char *string) {
@@ -358,20 +373,32 @@ unsigned int rv(unsigned int x) {
 
 //utility functions
 
-void load_create(mpz **rop, const char *string) {
+void load_create(mpz **rop, const char *string, int sz) {
 	//alloc buffers
 	//log2(10) ~ 3.32, so we'll say 4 bits per base10 digit
 	int digits = 4 * str_len(string);
 	char cmd[64 + str_len(string)], buf[64 + digits];
-	sprintf(cmd, "echo \"obase=2;%s\"|bc|tr -d '\n'", string);
-	
+	sprintf(cmd, 
+	"export BC_LINE_LENGTH=0;echo \"obase=2;%s\"|bc|tr -d '\n'", 
+	        string);
+
 	//let BC do the work
 	FILE *pipe = popen(cmd,"r");
 	fgets(buf, 63 + digits, pipe);
 	pclose(pipe);
 
 	int len = str_len(buf);
-	*rop = create_mpz( (len / 32) + (len % 32 != 0) );
+	int blocks;
+	
+	if     (sz ==  0) blocks = (len / 32) + (len % 32 != 0);
+	else if(sz == -1) blocks = 2*((len / 32) + (len % 32 != 0));
+	else              blocks = sz;
+	
+	if(blocks % 2) ++blocks; //ensure we have upper + lower half
+	                         //falling across block bound. 
+							 //for purposes of mul
+	
+	*rop = create_mpz( blocks );
 	
 	unsigned int cur_block_id   = 0;
 	unsigned int cur_block_data = 0;
@@ -380,11 +407,13 @@ void load_create(mpz **rop, const char *string) {
 		back = MAX(-1, i - 32);
 
 		for(j = back + 1; j <= i; ++j) {
+			
+			
 			cur_block_data <<= 1;
 			cur_block_data |= (buf[j] - '0' == 0 ? 0x0 : 0x1);
 		}
+
 		(*rop)->blocks[cur_block_id++] = cur_block_data;
-		
 		cur_block_data = 0x0;
 		i = back;
 	}
@@ -403,6 +432,7 @@ void print(const mpz *x, int decimal) {
 	int i;
 	
 	buf = calloc(1, 1 + (32 * x->block_count));
+	
 	for(i = x->block_count - 1; i >= 0; --i) {
 		print_ui(x->blocks[i], 
 		         buf + (32 * (x->block_count - i - 1)));
@@ -424,9 +454,16 @@ int get_bit(const mpz *a, unsigned int x) {
 	unsigned int block = a->blocks[(x / 32)];
 	return 0x1 & (block >> (x % 32));
 }
+
+void set_bit(mpz *a, unsigned int x) {
+	unsigned int mask = 1 << (x % 32);
+	a->blocks[(x / 32)] |= mask;
+}
  
-void modulus(mpz *r, const mpz *n, const mpz *d) {
+void idiv(mpz *q, mpz *r, const mpz *n, const mpz *d) {
 	zero(r);
+	if(q) zero(q);
+	
 	int i;
 	for(i = (32 * n->block_count) - 1; i >= 0; --i) {
 		ls(r, r, 1);
@@ -434,7 +471,9 @@ void modulus(mpz *r, const mpz *n, const mpz *d) {
 		if(get_bit(n, i))
 			r->blocks[0] |= 0x1;
 		
-		if(compare(r, d) >= 0)
+		if(compare(r, d) >= 0) {
 			subtract(r, r, d);
+			if(q) set_bit(q, i);
+		}
 	}
 }
