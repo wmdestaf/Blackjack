@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <limits.h>
 
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+
 typedef struct {
 	unsigned int *blocks;
 	unsigned int block_count;
@@ -67,37 +69,6 @@ int compare1(const mpz *op) {
 	}
 	return *(op->blocks) == 1;
 }
-
-void print_ui(unsigned int x, char *buf) {
-	int i;
-	for(i = 0; i < 32; ++i) {
-		buf[32 - i - 1] = '0' + (x & 0x1);
-		x >>= 1;
-	}
-}
-
-void print(const mpz *x, int decimal) {
-	char *buf, *cmd;
-	int i;
-	
-	buf = calloc(1, 1 + (32 * x->block_count));
-	for(i = x->block_count - 1; i >= 0; --i) {
-		print_ui(x->blocks[i], 
-		         buf + (32 * (x->block_count - i - 1)));
-	}
-	
-	if(decimal) {
-		cmd = calloc(1, 255 + (32 * x->block_count));
-		sprintf(cmd, "echo \"ibase=2;%s\"|bc", buf); //LOL
-		system(cmd);
-		free(cmd);
-	}
-	else
-		printf("%s\n",buf);
-	
-	free(buf);
-}
-
 
 void zero(mpz *op) {
 	int i;
@@ -359,45 +330,111 @@ void square(mpz *rop, const mpz *op) {
 		for(j = 0; j < op->block_count; ++j) {
 			product = (unsigned long)op->blocks[i] * 
 			          (unsigned long)op->blocks[j];
+					  
 			add_lu_off(rop, rop, product, i + j);
 		}
 	}		
 }
 
-void mpz_random(mpz *rop) {
-	
-}
-
-void load_create(mpz *rop, const char *string) {
+int str_len(const char *string) {
 	int len;
-	//get length
-	//for(
+	
+	len = 0;
+	while(*string) {
+		string++;
+		len++;
+	}
+	return len;
 }
 
-int main() {
-	mpz *x, *y, *z;
-	x = create_mpz(4);
-	y = create_mpz(4);
-	
-	load_ui(x, 0xBBBBAAAA, 0);
-	load_ui(x, 0xDDDDCCCC, 1);
-	//print(x,0);
-	print(x,1);
-	
-	square(y, x);
-	//print(y, 0);
-	print(y, 1);
-	
-
-	destroy_mpz(x);
-	destroy_mpz(y);
-	return 0;
+unsigned int rv(unsigned int x) {
+    x = ((x >> 1) & 0x55555555u) | ((x & 0x55555555u) << 1);
+    x = ((x >> 2) & 0x33333333u) | ((x & 0x33333333u) << 2);
+    x = ((x >> 4) & 0x0f0f0f0fu) | ((x & 0x0f0f0f0fu) << 4);
+    x = ((x >> 8) & 0x00ff00ffu) | ((x & 0x00ff00ffu) << 8);
+    x = ((x >> 16) & 0xffffu)    | ((x & 0xffffu)     << 16);
+    return x;
 }
 
+//utility functions
 
+void load_create(mpz **rop, const char *string) {
+	//alloc buffers
+	//log2(10) ~ 3.32, so we'll say 4 bits per base10 digit
+	int digits = 4 * str_len(string);
+	char cmd[64 + str_len(string)], buf[64 + digits];
+	sprintf(cmd, "echo \"obase=2;%s\"|bc|tr -d '\n'", string);
+	
+	//let BC do the work
+	FILE *pipe = popen(cmd,"r");
+	fgets(buf, 63 + digits, pipe);
+	pclose(pipe);
 
+	int len = str_len(buf);
+	*rop = create_mpz( (len / 32) + (len % 32 != 0) );
+	
+	unsigned int cur_block_id   = 0;
+	unsigned int cur_block_data = 0;
+	int i = len - 1, j, back;
+	while(i != -1) {
+		back = MAX(-1, i - 32);
 
+		for(j = back + 1; j <= i; ++j) {
+			cur_block_data <<= 1;
+			cur_block_data |= (buf[j] - '0' == 0 ? 0x0 : 0x1);
+		}
+		(*rop)->blocks[cur_block_id++] = cur_block_data;
+		
+		cur_block_data = 0x0;
+		i = back;
+	}
+}
 
+void print_ui(unsigned int x, char *buf) {
+	int i;
+	for(i = 0; i < 32; ++i) {
+		buf[32 - i - 1] = '0' + (x & 0x1);
+		x >>= 1;
+	}
+}
 
+void print(const mpz *x, int decimal) {
+	char *buf, *cmd;
+	int i;
+	
+	buf = calloc(1, 1 + (32 * x->block_count));
+	for(i = x->block_count - 1; i >= 0; --i) {
+		print_ui(x->blocks[i], 
+		         buf + (32 * (x->block_count - i - 1)));
+	}
+	
+	if(decimal) {
+		cmd = calloc(1, 255 + (32 * x->block_count));
+		sprintf(cmd, "echo \"ibase=2;%s\"|bc", buf);
+		system(cmd);
+		free(cmd);
+	}
+	else
+		printf("%s\n",buf);
+	
+	free(buf);
+}
 
-
+int get_bit(const mpz *a, unsigned int x) {
+	unsigned int block = a->blocks[(x / 32)];
+	return 0x1 & (block >> (x % 32));
+}
+ 
+void modulus(mpz *r, const mpz *n, const mpz *d) {
+	zero(r);
+	int i;
+	for(i = (32 * n->block_count) - 1; i >= 0; --i) {
+		ls(r, r, 1);
+		
+		if(get_bit(n, i))
+			r->blocks[0] |= 0x1;
+		
+		if(compare(r, d) >= 0)
+			subtract(r, r, d);
+	}
+}
