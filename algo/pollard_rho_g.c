@@ -31,43 +31,64 @@ void usage() {
 void pollard_rho(const mpz_t n, mpz_t res, mpz_t start, volatile bool *terminate) {
 	mpz_t i, x, y, k, d, n1, ymx;
 	
-	//variable init
+	//make space for variables
 	mpz_inits(i, x, y, k, d, n1, ymx, NULL);
+	
+	//initialize variables
 	mpz_set_ui(i, 1);
-	
 	mpz_set(x, start);
-	//gmp_printf("%Zd\n", x);
-	
 	mpz_set(y, x);
 	mpz_set_ui(k, 2);
+	
+	//store n-1, for comparison
 	mpz_set(n1, n);
-	mpz_sub_ui(n1,n1,1); //n - 1
+	mpz_sub_ui(n1,n1,1);
 
 	while(1) {
-		if(*terminate) {
+		if(*terminate) { //once a thread has terminated, don't care about result
+		                 //even without CRCW, an incoherent read will hit this on next loop
 			mpz_clears(i,x,y,k,d,ymx,n1,NULL);
 			return;
 		}
 		
+		//inc i
 		mpz_add_ui(i, i, 1);
+
+		/**
+			identity: (a + b) mod n = ((a mod n) + (b mod n)) mod n
+			know that 1 mod n == 1.
+			also, for x - k mod n, can represent as piecewise:
+			
+			(x - k) mod n = x - k,     k <= x
+			              = n - k - x, k  > x
+							
+			for x - 1 mod n, can generalize further:
+			
+			(x - 1) mod n = x - 1,     x != 0
+                          = n - 1,     x == 0
+			
+			Saving 1 modulus per cycle.
+		*/
 		
-		//raise
+		//x = x^2 - 1 mod n
 		mpz_powm_ui(x, x, 2, n);
-		mpz_sub_ui(x, x, 1); //1 mod n == 1
+		mpz_sub_ui(x, x, 1);
 		if(!mpz_cmp_ui(x, -1)) mpz_set(x, n1);
 		
-		//gcd
+		//d = gcd(y-x, n)
 		mpz_sub(ymx, y, x);
-		//mpz_abs(ymx, ymx); //gmp will allow neg for gcd
 		mpz_gcd(d, ymx, n);
 		
+		//if d is not trivial, return our result
 		if(mpz_cmp_ui(d, 1) && mpz_cmp(d, n)) {
 			mpz_set(res, d);
 			mpz_abs(res, res);
 
-			mpz_clears(i,x,y,k,d,ymx,n1,NULL);
+			mpz_clears(i,x,y,k,d,ymx,n1,NULL); //cleanup
 			return;
 		}
+		
+		//otherwise if our 'rho' has cycled, reconfigure parameters
 		else if(!mpz_cmp(i, k)) {
 			mpz_set(y, x);
 			mpz_mul_2exp(k, k, 1);
@@ -88,17 +109,16 @@ int main(int argc, char **argv) {
 	
 	GET_TIME(start)
 	terminate = false;
-
-	//state init
 	gmp_randinit_mt(state);
 
 
 	#pragma omp parallel for shared(terminate)
-	for(i = 0; i < omp_get_num_threads(); ++i) {
+	for(i = 0; i < omp_get_num_threads(); ++i) { //PR is embarrasingly parallel, oversubscribing is pointless here.
 		mpz_t start_;
 		mpz_init(start_);
 		
 		#pragma omp critical
+		//make sure each thread has their own random num from the LCG
 		{
 			mpz_urandomm(start_, state, n);
 		}
@@ -109,7 +129,7 @@ int main(int argc, char **argv) {
 		if(!terminate) {
 			gmp_printf("%Zd\n",res);
 			GET_TIME(end);
-			terminate = true;
+			terminate = true; //set flag exactly once
 		}
 		mpz_clear(start_);
 	}

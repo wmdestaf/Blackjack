@@ -109,27 +109,36 @@ void add_ui(mpz *rop, const mpz *op1, unsigned int op2) {
 	}
 }
 
+void inv(mpz *rop, const mpz *op) {
+	int i;
+	for(i = 0; i < op->block_count; ++i) {
+		rop->blocks[i] = ~op->blocks[i];
+	}
+}
+
 void subtract(mpz *rop, const mpz *op1, const mpz *op2) {
 	int i; 
-	unsigned long borrow;
-	unsigned long diff;  //!!!
+	unsigned char borrow;
+	signed   long diff;  //!!!
 	
-	borrow = 0L;
+	borrow = 0;
+	
 	for(i = 0; i < op1->block_count; ++i) {
 		
 		//perform the subtraction
-		diff = (unsigned long)op1->blocks[i] - 
-		       (unsigned long)op2->blocks[i] - borrow;
-		//calculate borrow
-		borrow = (diff & 0x80000000) >> 31;	
-		
-		//if borrow, offset. this is compiled to a cmove
-		if(borrow) {
-			diff += 0x200000000;
+		diff = (unsigned long)op1->blocks[i] - (unsigned long)op2->blocks[i] - borrow;
+			   
+		//TODO: get rid of conditional
+		if(diff < 0) { //overflow
+			borrow = 1;
+			diff = diff + 0x100000000;
 		}
-		
-		rop->blocks[i] = diff & 0xFFFFFFFF;
+		else
+			borrow = 0;
+		rop->blocks[i] = (unsigned long)diff & 0xFFFFFFFF;
 	}
+	
+	//print(rop,0);
 }
 
 // a - b if a >= b else b - a
@@ -239,11 +248,11 @@ void rs(mpz *rop, const mpz *op, unsigned int bits) {
 
 void rs2(mpz *rop, const mpz *op, unsigned int off8) {
 	int i;
-	for(i = 0; i <= op->block_count - off8; ++i) {
+	for(i = 0; i < op->block_count - off8; ++i) {
 		rop->blocks[i] = op->blocks[i + off8];
 	}
 	
-	for(i = op->block_count - off8 + 1; i < op->block_count; ++i) {
+	for(i = op->block_count - off8; i < op->block_count; ++i) {
 		rop->blocks[i] = 0x00;
 	}
 }
@@ -253,38 +262,11 @@ void rs3(mpz *rop, const mpz *op, unsigned int bits) {
 	rs (rop, rop, bits % 32);
 }
 
-//gcd -> gcd. THIS SCRAMBLES BOTH ARGUMENTS
-//adapted from rust's uutils binary GCD
-mpz *gcd(mpz *u, mpz *v) {
-	int i, j, k;
-	mpz *t;
-	
-	if     (compare0(u)) return u;
-	else if(compare0(v)) return v;
-	
-	i = ctz(u);
-	rs3(u, u, i);
-	
-	j = ctz(v);
-	rs3(v, v, j);
-	
-	k = i < j ? i : j;
-	
-	while(1) {
-		if(compare(u, v) > 0) {
-			t = u;
-			u = v;
-			v = t;
-		}
-		
-		subtract(v, v, u);
-		
-		if(compare0(v)) {
-			ls3(u, u, k);
-			return u;
-		}
-		
-		rs3(v, v, ctz(v));
+void gcd(mpz *a, mpz *b, mpz *scratch) {
+	while(!compare0(b)) {
+		idiv(NULL,scratch,a,b);
+		load(a, b);
+		load(b, scratch);
 	}
 }
 
@@ -335,7 +317,7 @@ void mul(mpz *rop, const mpz *op1, const mpz *op2) {
 
 			product[a + b] += carry + (a_block * b_block);
 			
-			carry = product[a + b] / UINT_MAX;
+			carry = product[a + b] / 0x100000000;
 			
 			product[a + b] &= UINT_MAX;
 		}
@@ -360,15 +342,6 @@ int str_len(const char *string) {
 		len++;
 	}
 	return len;
-}
-
-unsigned int rv(unsigned int x) {
-    x = ((x >> 1) & 0x55555555u) | ((x & 0x55555555u) << 1);
-    x = ((x >> 2) & 0x33333333u) | ((x & 0x33333333u) << 2);
-    x = ((x >> 4) & 0x0f0f0f0fu) | ((x & 0x0f0f0f0fu) << 4);
-    x = ((x >> 8) & 0x00ff00ffu) | ((x & 0x00ff00ffu) << 8);
-    x = ((x >> 16) & 0xffffu)    | ((x & 0xffffu)     << 16);
-    return x;
 }
 
 //utility functions
@@ -467,10 +440,8 @@ void idiv(mpz *q, mpz *r, const mpz *n, const mpz *d) {
 	int i;
 	for(i = (32 * n->block_count) - 1; i >= 0; --i) {
 		ls(r, r, 1);
-		
-		if(get_bit(n, i))
-			r->blocks[0] |= 0x1;
-		
+		r->blocks[0] |= get_bit(n,i);
+
 		if(compare(r, d) >= 0) {
 			subtract(r, r, d);
 			if(q) set_bit(q, i);
